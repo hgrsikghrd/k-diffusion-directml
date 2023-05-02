@@ -2,16 +2,12 @@ import math
 
 from scipy import integrate
 import torch
-import torch_directml
 from torch import nn
 from torchdiffeq import odeint
 import torchsde
 from tqdm.auto import trange, tqdm
 
 from . import utils
-
-
-dml = torch_directml.device(torch_directml.default_device())
 
 
 def append_zero(x):
@@ -115,8 +111,7 @@ class BrownianTreeNoiseSampler:
 
     def __call__(self, sigma, sigma_next):
         t0, t1 = self.transform(torch.as_tensor(sigma)), self.transform(torch.as_tensor(sigma_next))
-        tree = self.tree(t0, t1)
-        return tree / (t1 - t0).view(1, 1, 1, 1).abs().sqrt().repeat(tree.shape)
+        return self.tree(t0, t1) / (t1 - t0).abs().sqrt()
 
 
 @torch.no_grad()
@@ -437,8 +432,8 @@ class DPMSolver(nn.Module):
         if not forward and eta:
             raise ValueError('eta must be 0 for reverse sampling')
         h_init = abs(h_init) * (1 if forward else -1)
-        atol = torch.tensor(atol).to(dml)
-        rtol = torch.tensor(rtol).to(dml)
+        atol = torch.tensor(atol)
+        rtol = torch.tensor(rtol)
         s = t_start
         x_prev = x
         accept = True
@@ -492,7 +487,7 @@ def sample_dpm_fast(model, x, sigma_min, sigma_max, n, extra_args=None, callback
         dpm_solver = DPMSolver(model, extra_args, eps_callback=pbar.update)
         if callback is not None:
             dpm_solver.info_callback = lambda info: callback({'sigma': dpm_solver.sigma(info['t']), 'sigma_hat': dpm_solver.sigma(info['t_up']), **info})
-        return dpm_solver.dpm_solver_fast(x, dpm_solver.t(torch.tensor(sigma_max).to(dml)), dpm_solver.t(torch.tensor(sigma_min).to(dml)), n, eta, s_noise, noise_sampler)
+        return dpm_solver.dpm_solver_fast(x, dpm_solver.t(torch.tensor(sigma_max)), dpm_solver.t(torch.tensor(sigma_min)), n, eta, s_noise, noise_sampler)
 
 
 @torch.no_grad()
@@ -504,7 +499,7 @@ def sample_dpm_adaptive(model, x, sigma_min, sigma_max, extra_args=None, callbac
         dpm_solver = DPMSolver(model, extra_args, eps_callback=pbar.update)
         if callback is not None:
             dpm_solver.info_callback = lambda info: callback({'sigma': dpm_solver.sigma(info['t']), 'sigma_hat': dpm_solver.sigma(info['t_up']), **info})
-        x, info = dpm_solver.dpm_solver_adaptive(x, dpm_solver.t(torch.tensor(sigma_max).to(dml)), dpm_solver.t(torch.tensor(sigma_min).to(dml)), order, rtol, atol, h_init, pcoeff, icoeff, dcoeff, accept_safety, eta, s_noise, noise_sampler)
+        x, info = dpm_solver.dpm_solver_adaptive(x, dpm_solver.t(torch.tensor(sigma_max)), dpm_solver.t(torch.tensor(sigma_min)), order, rtol, atol, h_init, pcoeff, icoeff, dcoeff, accept_safety, eta, s_noise, noise_sampler)
     if return_info:
         return x, info
     return x
